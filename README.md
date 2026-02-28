@@ -48,28 +48,26 @@ npm run dev
 
 - `GET /api/items?date=YYYY-MM-DD`
 - `POST /api/items`
-- `PATCH /api/items/:id`
+- `PATCH /api/items/:id` (done の更新を含む)
 - `DELETE /api/items/:id`
 - `GET /api/todos`
 - `POST /api/todos`
 - `PATCH /api/todos/:id`
 - `DELETE /api/todos/:id`
 
-## 主なUIコンポーネント
+## 主な変更点（UI修正 + 不具合修正 + 軽機能追加）
 
-- Home（今日のフロー）
-  - 一本道の縦フローレール
-  - NOWカード、タイプ別3Dブロック、時刻表示
-  - 「5分だけ」ミニタイマー（遷移なし）
-- Calendar
-  - 月グリッド + 日付の予定一覧（PCは2カラム）
-- TODO
-  - チェックリスト + フィルタ（未完了/今日/今週）
-- 追加UI
-  - スマホ: Bottom Sheet
-  - PC: ダイアログ風シート
+- CategoryObject を追加し、絵文字カテゴリを背景オブジェクトとして大型化（sm/md/lg でサイズ制御、ラベルは太字ピル+blur）。
+- Homeフローで完了トグルを実装（完了→未完了に戻せる）。done は削除扱いにせず時刻順を維持。
+- カレンダーの月送り・選択日・曜日グリッド生成をローカル日付ベース (`YYYY-MM-DD`) で再実装し、日付ずれを回避。
+- 予定ドット色を種別に合わせて修正（move=緑、deadline=黄、その他=モノクロ）。
+- TODO追加フォームを実装し、空文字追加・二重追加・入力クリア漏れを防止。
+- TODO/Item の更新は optimistic update + 再取得で不整合を減らし、削除/完了切替の反映遅延を解消。
+- モバイルでタップ要素を 44px 以上に統一し、横はみ出しやスクロール不能が起きにくいレイアウトへ調整。
+- タイマー/開始/後で/集中関連UIを削除し、予定入力・可視化・完了状態切替に機能を限定。
+- Prisma マイグレーションを追加し、`Item.done` を永続化対象として維持しつつ `memo` ベースのモデルへ整理。
 
-## 今後の拡張前提
+## データモデル
 
-- 認証なしMVPのため、ユーザー概念は未導入
-- DBはSQLiteだがPrisma採用でPostgresへ移行しやすい構成
+`Item`: `id, type, category, title, date, time, memo, done, createdAt, updatedAt`
+
