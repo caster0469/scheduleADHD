@@ -7,23 +7,23 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 
+const dateRegex = /^\d{4}-\d{2}-\d{2}$/;
+
 const itemSchema = z.object({
   type: z.enum(['task', 'move', 'event', 'deadline']),
-  category: z.string().default('study'),
-  title: z.string().min(1),
-  date: z.string().min(1),
-  time: z.string().nullable().optional(),
-  durationMin: z.number().int().positive().nullable().optional(),
-  firstStep: z.string().nullable().optional(),
-  done: z.boolean().optional(),
-  postponedUntil: z.string().datetime().nullable().optional()
+  category: z.string().min(1),
+  title: z.string().trim().min(1),
+  date: z.string().regex(dateRegex),
+  time: z.string().regex(/^\d{2}:\d{2}$/).nullable().optional(),
+  memo: z.string().trim().nullable().optional(),
+  done: z.boolean().optional()
 });
 
 const todoSchema = z.object({
   emoji: z.string().min(1),
   label: z.string().min(1),
-  title: z.string().min(1),
-  sub: z.string().nullable().optional(),
+  title: z.string().trim().min(1),
+  sub: z.string().trim().nullable().optional(),
   done: z.boolean().optional()
 });
 
@@ -44,7 +44,8 @@ app.post('/api/items', async (req, res) => {
   const item = await prisma.item.create({
     data: {
       ...parsed.data,
-      postponedUntil: parsed.data.postponedUntil ? new Date(parsed.data.postponedUntil) : null
+      memo: parsed.data.memo || null,
+      time: parsed.data.time || null
     }
   });
   res.status(201).json(item);
@@ -57,12 +58,8 @@ app.patch('/api/items/:id', async (req, res) => {
     where: { id: req.params.id },
     data: {
       ...parsed.data,
-      postponedUntil:
-        parsed.data.postponedUntil === undefined
-          ? undefined
-          : parsed.data.postponedUntil
-            ? new Date(parsed.data.postponedUntil)
-            : null
+      memo: parsed.data.memo === undefined ? undefined : parsed.data.memo || null,
+      time: parsed.data.time === undefined ? undefined : parsed.data.time || null
     }
   });
   res.json(item);

@@ -12,10 +12,10 @@ async function main() {
 
   await prisma.item.createMany({
     data: [
-      { type: 'task', category: 'study', title: '勉強', date, time: '15:30', durationMin: 55, firstStep: 'ノートを開く' },
-      { type: 'move', category: 'move', title: '移動', date, time: '17:30', durationMin: 15, firstStep: '玄関の準備' },
-      { type: 'event', category: 'meal', title: '食事', date, time: '18:00', durationMin: 30 },
-      { type: 'deadline', category: 'chores', title: '課題提出', date, time: '19:30', firstStep: '提出ページを開く' }
+      { type: 'task', category: 'study', title: '勉強', date, time: '15:30', memo: 'ノートを開く' },
+      { type: 'move', category: 'move', title: '移動', date, time: '17:30', memo: '玄関の準備' },
+      { type: 'event', category: 'meal', title: '食事', date, time: '18:00' },
+      { type: 'deadline', category: 'chores', title: '課題提出', date, time: '19:30', memo: '提出ページを開く' }
     ]
   });
 

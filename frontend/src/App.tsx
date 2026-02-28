@@ -1,7 +1,8 @@
-import { useEffect, useMemo, useState } from 'react';
+import { FormEvent, useEffect, useMemo, useState } from 'react';
 
 type Tab = 'home' | 'calendar' | 'todo';
 type ItemType = 'task' | 'move' | 'event' | 'deadline';
+type CategorySize = 'sm' | 'md' | 'lg';
 
 type Item = {
   id: string;
@@ -10,8 +11,7 @@ type Item = {
   title: string;
   date: string;
   time: string | null;
-  durationMin: number | null;
-  firstStep: string | null;
+  memo: string | null;
   done: boolean;
 };
 
@@ -24,8 +24,16 @@ type Todo = {
   done: boolean;
 };
 
+type ItemDraft = {
+  type: ItemType;
+  category: string;
+  title: string;
+  date: string;
+  time: string;
+  memo: string;
+};
+
 const API_BASE = import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:4000';
-const dateStr = new Date().toISOString().slice(0, 10);
 
 const categoryMap: Record<string, { emoji: string; label: string }> = {
   study: { emoji: '📓', label: '勉強' },
@@ -38,81 +46,158 @@ const categoryMap: Record<string, { emoji: string; label: string }> = {
   hobby: { emoji: '🎮', label: '趣味' }
 };
 
-const itemTypeLabel: Record<ItemType, string> = { task: '作業', move: '移動', event: '予定', deadline: '締切' };
+const itemTypeLabel: Record<ItemType, string> = {
+  task: '作業',
+  move: '移動',
+  event: '予定',
+  deadline: '締切'
+};
+
+function todayString() {
+  return toDateStringLocal(new Date());
+}
+
+function toDateStringLocal(date: Date) {
+  const y = date.getFullYear();
+  const m = `${date.getMonth() + 1}`.padStart(2, '0');
+  const d = `${date.getDate()}`.padStart(2, '0');
+  return `${y}-${m}-${d}`;
+}
+
+function parseDateString(date: string) {
+  const [y, m, d] = date.split('-').map(Number);
+  return new Date(y, m - 1, d);
+}
+
+function addMonths(date: string, diff: number) {
+  const d = parseDateString(date);
+  return toDateStringLocal(new Date(d.getFullYear(), d.getMonth() + diff, 1));
+}
 
 export function App() {
   const [tab, setTab] = useState<Tab>('home');
   const [items, setItems] = useState<Item[]>([]);
   const [todos, setTodos] = useState<Todo[]>([]);
-  const [selectedDate, setSelectedDate] = useState(dateStr);
+  const [selectedDate, setSelectedDate] = useState(todayString());
   const [draftOpen, setDraftOpen] = useState(false);
-  const [todoFilter, setTodoFilter] = useState<'all' | 'open' | 'today' | 'week'>('open');
-  const [itemDraft, setItemDraft] = useState({ type: 'task', category: 'study', title: '', date: dateStr, time: '', durationMin: '', firstStep: '' });
-
-  const [timerTarget, setTimerTarget] = useState<string | null>(null);
-  const [timerSec, setTimerSec] = useState(300);
-  const [timerRunning, setTimerRunning] = useState(false);
+  const [todoTitle, setTodoTitle] = useState('');
+  const [todoSub, setTodoSub] = useState('');
+  const [submittingTodo, setSubmittingTodo] = useState(false);
+  const [submittingItem, setSubmittingItem] = useState(false);
+  const [itemDraft, setItemDraft] = useState<ItemDraft>({
+    type: 'task',
+    category: 'study',
+    title: '',
+    date: todayString(),
+    time: '',
+    memo: ''
+  });
 
   const isDesktop = window.matchMedia('(min-width: 768px)').matches;
 
-  async function fetchAll() {
-    const [itemRes, todoRes] = await Promise.all([
-      fetch(`${API_BASE}/api/items?date=${selectedDate}`),
-      fetch(`${API_BASE}/api/todos`)
-    ]);
-    setItems(await itemRes.json());
-    setTodos(await todoRes.json());
+  const today = todayString();
+  const currentMonth = selectedDate.slice(0, 7);
+
+  async function fetchItems() {
+    const res = await fetch(`${API_BASE}/api/items`);
+    const json = (await res.json()) as Item[];
+    setItems(
+      [...json].sort((a, b) => `${a.date}-${a.time ?? '99:99'}-${a.id}`.localeCompare(`${b.date}-${b.time ?? '99:99'}-${b.id}`))
+    );
+  }
+
+  async function fetchTodos() {
+    const res = await fetch(`${API_BASE}/api/todos`);
+    setTodos(await res.json());
+  }
+
+  async function refreshAll() {
+    await Promise.all([fetchItems(), fetchTodos()]);
   }
 
   useEffect(() => {
-    void fetchAll();
-  }, [selectedDate]);
+    void refreshAll();
+  }, []);
 
-  useEffect(() => {
-    if (!timerRunning || timerSec <= 0) return;
-    const id = setInterval(() => setTimerSec((s) => s - 1), 1000);
-    return () => clearInterval(id);
-  }, [timerRunning, timerSec]);
+  const todayItems = useMemo(
+    () => items.filter((item) => item.date === today).sort((a, b) => `${a.time ?? '99:99'}-${a.id}`.localeCompare(`${b.time ?? '99:99'}-${b.id}`)),
+    [items, today]
+  );
+  const dayItems = useMemo(
+    () => items.filter((item) => item.date === selectedDate).sort((a, b) => `${a.time ?? '99:99'}-${a.id}`.localeCompare(`${b.time ?? '99:99'}-${b.id}`)),
+    [items, selectedDate]
+  );
 
-  const nowItem = useMemo(() => items.find((i) => !i.done) ?? null, [items]);
-
-  async function addItem() {
-    await fetch(`${API_BASE}/api/items`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
+  async function addItem(e: FormEvent) {
+    e.preventDefault();
+    const title = itemDraft.title.trim();
+    if (!title || submittingItem) return;
+    setSubmittingItem(true);
+    try {
+      const payload = {
         ...itemDraft,
-        durationMin: itemDraft.durationMin ? Number(itemDraft.durationMin) : null,
+        title,
         time: itemDraft.time || null,
-        firstStep: itemDraft.firstStep || null
-      })
-    });
-    setDraftOpen(false);
-    setItemDraft({ ...itemDraft, title: '', time: '', durationMin: '', firstStep: '' });
-    await fetchAll();
+        memo: itemDraft.memo.trim() || null,
+        done: false
+      };
+      const res = await fetch(`${API_BASE}/api/items`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+      if (!res.ok) return;
+      setItemDraft((prev) => ({ ...prev, title: '', time: '', memo: '' }));
+      setDraftOpen(false);
+      await fetchItems();
+    } finally {
+      setSubmittingItem(false);
+    }
   }
 
-  async function patchItem(id: string, payload: Partial<Item>) {
-    await fetch(`${API_BASE}/api/items/${id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
-    await fetchAll();
-  }
-
-  async function addTodo() {
-    await fetch(`${API_BASE}/api/todos`, {
-      method: 'POST',
+  async function toggleItemDone(item: Item) {
+    await fetch(`${API_BASE}/api/items/${item.id}`, {
+      method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ emoji: '📝', label: 'メモ', title: '新しいTODO', sub: '最初の一手' })
+      body: JSON.stringify({ done: !item.done })
     });
-    await fetchAll();
+    setItems((prev) => prev.map((it) => (it.id === item.id ? { ...it, done: !it.done } : it)));
   }
 
-  const filteredTodos = todos.filter((t) => {
-    if (todoFilter === 'open') return !t.done;
-    return true;
-  });
+  async function deleteTodo(id: string) {
+    await fetch(`${API_BASE}/api/todos/${id}`, { method: 'DELETE' });
+    setTodos((prev) => prev.filter((todo) => todo.id !== id));
+  }
 
-  const min = Math.floor(timerSec / 60);
-  const sec = `${timerSec % 60}`.padStart(2, '0');
+  async function toggleTodo(id: string, done: boolean) {
+    await fetch(`${API_BASE}/api/todos/${id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ done: !done })
+    });
+    setTodos((prev) => prev.map((todo) => (todo.id === id ? { ...todo, done: !done } : todo)));
+  }
+
+  async function createTodo(e: FormEvent) {
+    e.preventDefault();
+    const title = todoTitle.trim();
+    if (!title || submittingTodo) return;
+    if (todos.some((todo) => !todo.done && todo.title.trim() === title)) return;
+    setSubmittingTodo(true);
+    try {
+      const res = await fetch(`${API_BASE}/api/todos`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ emoji: '📝', label: 'TODO', title, sub: todoSub.trim() || null })
+      });
+      if (!res.ok) return;
+      setTodoTitle('');
+      setTodoSub('');
+      await fetchTodos();
+    } finally {
+      setSubmittingTodo(false);
+    }
+  }
 
   return (
     <div className="app">
@@ -127,37 +212,55 @@ export function App() {
           <section>
             <h1>今日のフロー</h1>
             <div className="rail" />
-            <div className="nowLabel">NOW</div>
-            {nowItem && (
-              <FlowNode item={nowItem} now big onComplete={() => patchItem(nowItem.id, { done: true })} onTimer={() => { setTimerTarget(nowItem.id); setTimerSec(300); setTimerRunning(true); }} onPostpone={(mins) => patchItem(nowItem.id, { postponedUntil: new Date(Date.now() + mins * 60_000).toISOString() })} />
-            )}
-            <div className="next">次にやる</div>
-            {items.filter((i) => i.id !== nowItem?.id).map((item) => (
-              <FlowNode key={item.id} item={item} onComplete={() => patchItem(item.id, { done: true })} />
+            {todayItems.map((item) => (
+              <FlowNode key={item.id} item={item} onToggleDone={() => toggleItemDone(item)} size={isDesktop ? 'lg' : 'md'} />
             ))}
-            <button className="addBtn" onClick={() => setDraftOpen(true)}>＋ やることを追加</button>
+            {todayItems.length === 0 && <p className="empty">今日の予定はまだありません。</p>}
+            <button className="addBtn" onClick={() => { setItemDraft((prev) => ({ ...prev, date: today })); setDraftOpen(true); }}>＋ 予定を追加</button>
           </section>
         )}
 
-        {tab === 'calendar' && <CalendarView items={items} selectedDate={selectedDate} onDate={setSelectedDate} onAdd={() => setDraftOpen(true)} />}
+        {tab === 'calendar' && (
+          <CalendarView
+            currentMonth={currentMonth}
+            selectedDate={selectedDate}
+            allItems={items}
+            dayItems={dayItems}
+            onChangeMonth={(diff) => {
+              const first = addMonths(`${currentMonth}-01`, diff);
+              const nextDate = `${first.slice(0, 7)}-${selectedDate.slice(8, 10)}`;
+              const parsed = parseDateString(nextDate);
+              if (parsed.getMonth() + 1 === Number(first.slice(5, 7))) {
+                setSelectedDate(nextDate);
+              } else {
+                setSelectedDate(first);
+              }
+            }}
+            onSelectDate={setSelectedDate}
+            onAdd={() => { setItemDraft((prev) => ({ ...prev, date: selectedDate })); setDraftOpen(true); }}
+            onToggleDone={toggleItemDone}
+          />
+        )}
 
         {tab === 'todo' && (
           <section>
             <h1>TODO</h1>
-            <div className="todoFilter">
-              <button onClick={() => setTodoFilter('open')}>未完了</button>
-              <button onClick={() => setTodoFilter('today')}>今日</button>
-              <button onClick={() => setTodoFilter('week')}>今週</button>
-            </div>
-            <button className="addBtn" onClick={addTodo}>＋ 新規TODO</button>
-            {filteredTodos.map((t) => (
-              <div className="todoRow" key={t.id} onClick={() => fetch(`${API_BASE}/api/todos/${t.id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ done: !t.done }) }).then(fetchAll)}>
-                <div className="cat">{t.emoji}<span>{t.label}</span></div>
-                <div>
+            <form className="todoCreate" onSubmit={createTodo}>
+              <input value={todoTitle} onChange={(e) => setTodoTitle(e.target.value)} placeholder="TODOタイトル" maxLength={80} />
+              <input value={todoSub} onChange={(e) => setTodoSub(e.target.value)} placeholder="メモ（任意）" maxLength={120} />
+              <button type="submit" disabled={submittingTodo}>＋ 追加</button>
+            </form>
+            {todos.map((t) => (
+              <div className={`todoRow ${t.done ? 'isDone' : ''}`} key={t.id}>
+                <CategoryObject emoji={t.emoji} label={t.label} size={isDesktop ? 'md' : 'sm'} />
+                <div className="todoContent">
                   <strong>{t.title}</strong>
-                  <p>{t.sub}</p>
+                  {t.sub && <p>{t.sub}</p>}
                 </div>
-                <input readOnly type="checkbox" checked={t.done} />
+                <div className="todoActions">
+                  <button className="iconBtn" onClick={() => toggleTodo(t.id, t.done)}>{t.done ? '↩' : '✓'}</button>
+                  <button className="iconBtn delete" onClick={() => deleteTodo(t.id)}>✕</button>
+                </div>
               </div>
             ))}
           </section>
@@ -165,19 +268,9 @@ export function App() {
       </main>
 
       <aside className="detailPanel">
-        <h3>詳細 / ミニタイマー</h3>
-        {timerTarget ? (
-          <div className="timerCard">
-            <div className="bar"><span style={{ width: `${(timerSec / 300) * 100}%` }} /></div>
-            <p>{min}:{sec}</p>
-            <div className="timerActions">
-              <button onClick={() => setTimerSec((s) => s + 120)}>+2分</button>
-              <button onClick={() => setTimerRunning((s) => !s)}>{timerRunning ? '一時停止' : '再開'}</button>
-              <button onClick={() => { setTimerRunning(false); setTimerTarget(null); }}>完了</button>
-            </div>
-            {timerSec <= 0 && <div className="timerDone"><button onClick={() => setTimerSec(600)}>続ける(+10分)</button><button onClick={() => { setTimerTarget(null); setTimerRunning(false); }}>終わる</button></div>}
-          </div>
-        ) : <p>「5分だけ」を押すと表示されます。</p>}
+        <h3>選択日</h3>
+        <p>{selectedDate}</p>
+        <p>予定: {dayItems.length}件</p>
       </aside>
 
       {!isDesktop && (
@@ -190,74 +283,118 @@ export function App() {
 
       {draftOpen && (
         <div className="sheetBackdrop" onClick={() => setDraftOpen(false)}>
-          <div className="sheet" onClick={(e) => e.stopPropagation()}>
+          <form className="sheet" onSubmit={addItem} onClick={(e) => e.stopPropagation()}>
             <h3>予定を追加</h3>
-            <select value={itemDraft.type} onChange={(e) => setItemDraft({ ...itemDraft, type: e.target.value })}>{['task', 'move', 'event', 'deadline'].map((t) => <option key={t}>{t}</option>)}</select>
-            <input placeholder="title" value={itemDraft.title} onChange={(e) => setItemDraft({ ...itemDraft, title: e.target.value })} />
-            <input type="date" value={itemDraft.date} onChange={(e) => setItemDraft({ ...itemDraft, date: e.target.value })} />
+            <select value={itemDraft.type} onChange={(e) => setItemDraft({ ...itemDraft, type: e.target.value as ItemType })}>
+              {(['task', 'move', 'event', 'deadline'] as ItemType[]).map((t) => <option key={t} value={t}>{itemTypeLabel[t]}</option>)}
+            </select>
+            <select value={itemDraft.category} onChange={(e) => setItemDraft({ ...itemDraft, category: e.target.value })}>
+              {Object.keys(categoryMap).map((key) => <option key={key} value={key}>{categoryMap[key].label}</option>)}
+            </select>
+            <input placeholder="タイトル" value={itemDraft.title} onChange={(e) => setItemDraft({ ...itemDraft, title: e.target.value })} maxLength={80} required />
+            <input type="date" value={itemDraft.date} onChange={(e) => setItemDraft({ ...itemDraft, date: e.target.value })} required />
             <input type="time" value={itemDraft.time} onChange={(e) => setItemDraft({ ...itemDraft, time: e.target.value })} />
-            <input placeholder="durationMin" value={itemDraft.durationMin} onChange={(e) => setItemDraft({ ...itemDraft, durationMin: e.target.value })} />
-            <input placeholder="firstStep" value={itemDraft.firstStep} onChange={(e) => setItemDraft({ ...itemDraft, firstStep: e.target.value })} />
-            <button onClick={addItem}>追加</button>
-          </div>
+            <input placeholder="メモ（任意）" value={itemDraft.memo} onChange={(e) => setItemDraft({ ...itemDraft, memo: e.target.value })} maxLength={120} />
+            <button type="submit" disabled={submittingItem}>追加</button>
+          </form>
         </div>
       )}
     </div>
   );
 }
 
-function FlowNode({ item, now, big, onComplete, onTimer, onPostpone }: { item: Item; now?: boolean; big?: boolean; onComplete?: () => void; onTimer?: () => void; onPostpone?: (mins: number) => void }) {
+function FlowNode({ item, onToggleDone, size }: { item: Item; onToggleDone: () => void; size: CategorySize }) {
   const cat = categoryMap[item.category] ?? { emoji: '📝', label: item.category };
   return (
-    <article className={`node ${item.type} ${big ? 'big' : ''}`}>
+    <article className={`node ${item.type} ${item.done ? 'isDone' : ''}`}>
       <div className="time">{item.time ?? '--:--'}</div>
       <div className="card">
-        <div className="cat">{cat.emoji}<span>{cat.label}</span></div>
+        <CategoryObject emoji={cat.emoji} label={cat.label} size={size} />
         <div>
           <h3>{item.title}</h3>
-          <p>{item.firstStep ?? `${itemTypeLabel[item.type]} ${item.durationMin ?? ''}分`}</p>
+          <p>{item.memo || itemTypeLabel[item.type]}</p>
         </div>
+        <button className="doneToggle" onClick={onToggleDone} aria-label="完了切り替え">{item.done ? '✓' : '○'}</button>
       </div>
-      {now && (
-        <div className="actions">
-          <button>▶ 開始</button>
-          <button onClick={onTimer}>⏱ 5分だけ</button>
-          <button onClick={() => onPostpone?.(15)}>↻ 後で15分</button>
-          <button onClick={onComplete}>✓ 完了</button>
-        </div>
-      )}
-      {!now && <button className="done" onClick={onComplete}>✓</button>}
     </article>
   );
 }
 
-function CalendarView({ items, selectedDate, onDate, onAdd }: { items: Item[]; selectedDate: string; onDate: (d: string) => void; onAdd: () => void }) {
-  const today = new Date(selectedDate);
-  const year = today.getFullYear();
-  const month = today.getMonth();
-  const first = new Date(year, month, 1);
+function CategoryObject({ emoji, label, size }: { emoji: string; label: string; size: CategorySize }) {
+  return (
+    <div className={`catObj ${size}`}>
+      <span className="catLabel">{label}</span>
+      <span className="catEmoji">{emoji}</span>
+    </div>
+  );
+}
+
+function CalendarView({
+  currentMonth,
+  selectedDate,
+  allItems,
+  dayItems,
+  onChangeMonth,
+  onSelectDate,
+  onAdd,
+  onToggleDone
+}: {
+  currentMonth: string;
+  selectedDate: string;
+  allItems: Item[];
+  dayItems: Item[];
+  onChangeMonth: (diff: number) => void;
+  onSelectDate: (date: string) => void;
+  onAdd: () => void;
+  onToggleDone: (item: Item) => void;
+}) {
+  const [y, m] = currentMonth.split('-').map(Number);
+  const first = new Date(y, m - 1, 1);
   const startWeekday = first.getDay();
-  const daysInMonth = new Date(year, month + 1, 0).getDate();
+  const daysInMonth = new Date(y, m, 0).getDate();
   const cells = Array.from({ length: 42 }, (_, i) => {
     const day = i - startWeekday + 1;
-    return day > 0 && day <= daysInMonth ? day : null;
+    if (day <= 0 || day > daysInMonth) return null;
+    return `${currentMonth}-${`${day}`.padStart(2, '0')}`;
+  });
+
+  const itemByDate = new Map<string, Item[]>();
+  allItems.forEach((item) => {
+    if (!itemByDate.has(item.date)) itemByDate.set(item.date, []);
+    itemByDate.get(item.date)?.push(item);
   });
 
   return (
     <section>
       <h1>カレンダー</h1>
+      <div className="monthHead">
+        <button onClick={() => onChangeMonth(-1)}>← 前月</button>
+        <strong>{currentMonth}</strong>
+        <button onClick={() => onChangeMonth(1)}>次月 →</button>
+      </div>
       <div className="calendarLayout">
         <div className="grid">
-          {cells.map((d, i) => (
-            <button key={i} className={d === Number(selectedDate.slice(-2)) ? 'active' : ''} onClick={() => d && onDate(`${selectedDate.slice(0, 8)}${`${d}`.padStart(2, '0')}`)}>
-              {d}
-              {d && items.length > 0 && <span className="dot" />}
-            </button>
-          ))}
+          {['日', '月', '火', '水', '木', '金', '土'].map((day) => <div key={day} className="weekday">{day}</div>)}
+          {cells.map((date, i) => {
+            const dayItemsForDate = date ? itemByDate.get(date) ?? [] : [];
+            const dotType = dayItemsForDate[0]?.type;
+            return (
+              <button key={`${date ?? 'blank'}-${i}`} className={date === selectedDate ? 'active' : ''} disabled={!date} onClick={() => date && onSelectDate(date)}>
+                {date ? Number(date.slice(-2)) : ''}
+                {date && dayItemsForDate.length > 0 && <span className={`dot ${dotType}`} />}
+              </button>
+            );
+          })}
         </div>
         <div className="dayList">
           <h3>{selectedDate}</h3>
-          {items.map((item) => <div key={item.id} className={`mini ${item.type}`}>{item.time} {item.title}</div>)}
+          {dayItems.map((item) => (
+            <div key={item.id} className={`mini ${item.done ? 'isDone' : ''}`}>
+              <span>{item.time ?? '--:--'} {item.title}</span>
+              <button className="iconBtn" onClick={() => onToggleDone(item)}>{item.done ? '↩' : '✓'}</button>
+            </div>
+          ))}
+          {dayItems.length === 0 && <p className="empty">この日の予定はありません。</p>}
           <button className="addBtn" onClick={onAdd}>＋ 追加</button>
         </div>
       </div>
