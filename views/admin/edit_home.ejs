@@ -1,0 +1,30 @@
+<%-
+  include("../partials/layout", {
+    title: "トップページ編集 | YANREPHOUSE",
+    user,
+    csrf,
+    body: `
+      <section class="section narrow">
+        <div class="row">
+          <h1>トップページ編集</h1>
+          <a class="btn ghost" href="/admin">戻る</a>
+        </div>
+        ${saved ? `<div class="toast">保存しました</div>` : ``}
+        ${error ? `<div class="alert">${error}</div>` : ``}
+        <form method="post" action="/admin/page/home" class="form">
+          <input type="hidden" name="_csrf" value="${csrf}">
+          <label>タイトル
+            <input name="title" value="${(page?.title||"").replaceAll('"','&quot;')}" required />
+          </label>
+          <label>ヒーロー文
+            <input name="hero" value="${(page?.hero||"").replaceAll('"','&quot;')}" required />
+          </label>
+          <label>本文（改行OK）
+            <textarea name="body" rows="6" required>${(page?.body||"")}</textarea>
+          </label>
+          <button class="btn" type="submit">保存</button>
+        </form>
+      </section>
+    `
+  })
+%>

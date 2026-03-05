@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title><%= title %></title>
+  <link rel="stylesheet" href="/public/styles.css" />
+</head>
+<body>
+  <header class="header">
+    <div class="container header-inner">
+      <a class="brand" href="/">YANREPHOUSE</a>
+      <nav class="nav">
+        <a href="/">ホーム</a>
+        <% if (user) { %>
+          <a href="/admin">管理</a>
+          <form action="/admin/logout" method="post" class="inline">
+            <input type="hidden" name="_csrf" value="<%= csrf %>">
+            <button class="linklike" type="submit">ログアウト</button>
+          </form>
+        <% } else { %>
+          <a href="/admin/login">管理者ログイン</a>
+        <% } %>
+      </nav>
+    </div>
+  </header>
+
+  <main class="container">
+    <%- body %>
+  </main>
+
+  <footer class="footer">
+    <div class="container">
+      <small>© <%= new Date().getFullYear() %> YANREPHOUSE</small>
+    </div>
+  </footer>
+</body>
+</html>

@@ -1,0 +1,43 @@
+<%-
+  include("../partials/layout", {
+    title: "商品管理 | YANREPHOUSE",
+    user,
+    csrf,
+    body: `
+      <section class="section">
+        <div class="row">
+          <h1>商品管理</h1>
+          <div class="row">
+            <a class="btn ghost" href="/admin">戻る</a>
+            <a class="btn" href="/admin/products/new">＋ 追加</a>
+          </div>
+        </div>
+
+        <div class="table">
+          <div class="t-head">
+            <div>商品</div><div>価格</div><div>更新</div><div>操作</div>
+          </div>
+          ${
+            (products || []).map(p => `
+              <div class="t-row">
+                <div class="t-main">
+                  <div class="t-title">${p.name}</div>
+                  <div class="muted small">${p.image_url ? p.image_url : "No image"}</div>
+                </div>
+                <div>¥${Number(p.price||0).toLocaleString()}</div>
+                <div class="muted small">${new Date(p.updated_at).toLocaleString("ja-JP")}</div>
+                <div class="t-actions">
+                  <a class="btn small" href="/admin/products/${p.id}/edit">編集</a>
+                  <form method="post" action="/admin/products/${p.id}/delete" onsubmit="return confirm('削除しますか？');">
+                    <input type="hidden" name="_csrf" value="${csrf}">
+                    <button class="btn small danger" type="submit">削除</button>
+                  </form>
+                </div>
+              </div>
+            `).join("")
+          }
+        </div>
+      </section>
+    `
+  })
+%>
