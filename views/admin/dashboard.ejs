@@ -1,0 +1,22 @@
+<%-
+  include("../partials/layout", {
+    title: "管理ダッシュボード | YANREPHOUSE",
+    user,
+    csrf,
+    body: `
+      <section class="section">
+        <h1>管理ダッシュボード</h1>
+        <div class="admin-grid">
+          <a class="admin-card" href="/admin/page/home">
+            <div class="admin-title">トップページ編集</div>
+            <div class="muted small">タイトル / ヒーロー / 文章</div>
+          </a>
+          <a class="admin-card" href="/admin/products">
+            <div class="admin-title">商品管理</div>
+            <div class="muted small">追加 / 編集 / 削除</div>
+          </a>
+        </div>
+      </section>
+    `
+  })
+%>

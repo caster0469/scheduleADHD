@@ -1,7 +1,0 @@
-node_modules
-.env
-*.db
-*.db-journal
-dist
-frontend/dist
-backend/dist

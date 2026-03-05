@@ -1,0 +1,35 @@
+<%-
+  include("partials/layout", {
+    title: page?.title || "YANREPHOUSE",
+    user,
+    csrf,
+    body: `
+      <section class="hero">
+        <h1><%= page?.hero || "" %></h1>
+        <p class="muted"><%= (page?.body || "").split("\n").join("<br>") %></p>
+      </section>
+
+      <section class="section">
+        <div class="section-head">
+          <h2>入荷・販売中</h2>
+          <p class="muted">管理者ページから追加・編集できます。</p>
+        </div>
+        <div class="grid">
+          ${
+            (products || []).map(p => `
+              <a class="card" href="/product/${p.id}">
+                <div class="thumb">
+                  ${p.image_url ? `<img src="${p.image_url}" alt="${(p.name||"").replaceAll('"','&quot;')}" />` : `<div class="thumb-placeholder">No image</div>`}
+                </div>
+                <div class="card-body">
+                  <div class="card-title">${p.name}</div>
+                  <div class="card-sub">¥${Number(p.price||0).toLocaleString()}</div>
+                </div>
+              </a>
+            `).join("")
+          }
+        </div>
+      </section>
+    `
+  })
+%>
